@@ -11,4 +11,4 @@ build/
 htmlcov/
 *.log
 model/titanic_pipeline.pkl
-data/titanic.csv
+
