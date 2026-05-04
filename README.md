@@ -11,8 +11,8 @@ survived, exposed via a REST API and fully containerised with Docker.
 titanic-ml-project/
 │
 ├── data/
-│   ├── generate_data.py      # Dataset loader / synthetic data generator
-│   └── titanic.csv           # Generated after first run
+│   |__ titanic.csv          # Dataset 
+│        
 │
 ├── src/
 │   ├── __init__.py
