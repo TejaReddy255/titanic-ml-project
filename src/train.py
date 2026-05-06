@@ -37,12 +37,12 @@ from sklearn.metrics import (
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.preprocessor import build_preprocessor, EXPECTED_FEATURES
-from data.generate_data import get_data
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 MODEL_DIR  = os.path.join(os.path.dirname(__file__), "..", "model")
 MODEL_PATH = os.path.join(MODEL_DIR, "titanic_pipeline.pkl")
 METRICS_PATH = os.path.join(MODEL_DIR, "metrics.json")
+DATA_PATH=os.path.join(DATA_DIR,"titan.csv")
 
 TARGET = "Survived"
 RANDOM_STATE = 42
@@ -50,7 +50,7 @@ RANDOM_STATE = 42
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 def load_dataset() -> tuple[pd.DataFrame, pd.Series]:
-    df = get_data()
+    df = pd.readcsv(DATA_PATH)
     X = df[EXPECTED_FEATURES].copy()
     y = df[TARGET]
     return X, y
