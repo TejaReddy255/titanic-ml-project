@@ -54,15 +54,7 @@ USER appuser
 
 EXPOSE 5000
 
-# ── health check ──────────────────────────────────────────────────────────────
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" \
-    || exit 1
+
 
 # ── start API via gunicorn ────────────────────────────────────────────────────
-CMD ["gunicorn", "api.app:app", \
-     "--bind", "0.0.0.0:5000", \
-     "--workers", "2", \
-     "--timeout", "60", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "5000"]
