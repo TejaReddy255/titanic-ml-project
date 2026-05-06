@@ -1,186 +1,59 @@
-"""
-api/app.py
-----------
-Flask REST API for Titanic survival prediction.
+# api/app.py
+import os, sys, json
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional
 
-Endpoints
----------
-GET  /           Health check
-GET  /info       Model metadata + feature info
-POST /predict    Return survival prediction for a passenger
-
-Run locally
------------
-    python api/app.py
-
-Or via gunicorn (production):
-    gunicorn api.app:app --bind 0.0.0.0:5000 --workers 2
-"""
-
-import os
-import sys
-import json
-import logging
-from datetime import datetime
-
-from flask import Flask, request, jsonify
-
-# ensure project root is on path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from src.predict import predict, load_model, validate_input
-from src.preprocessor import EXPECTED_FEATURES, NUMERIC_FEATURES, CATEGORICAL_FEATURES
+from src.predict import predict, load_model
+from src.preprocessor import EXPECTED_FEATURES
 
-# ── logging ────────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+app = FastAPI(
+    title="Titanic Survival Prediction API",
+    description="Predicts whether a Titanic passenger survived using a Random Forest model.",
+    version="1.0.0"
 )
-logger = logging.getLogger(__name__)
 
-# ── app ────────────────────────────────────────────────────────────────────────
-app = Flask(__name__)
-app.config["JSON_SORT_KEYS"] = False
+# ── Request schema (powers the /docs form) ────────────────────────────────────
+class PassengerInput(BaseModel):
+    Pclass:   int            = Field(..., ge=1, le=3,  example=3,      description="Ticket class: 1=1st, 2=2nd, 3=3rd")
+    Sex:      str            = Field(...,               example="male", description="male or female")
+    Age:      Optional[float]= Field(None, ge=0, le=120,example=22.0,  description="Age in years (optional)")
+    Fare:     float          = Field(..., ge=0,         example=7.25,   description="Ticket fare")
+    Embarked: Optional[str] = Field(None,               example="S",   description="Port: C=Cherbourg, Q=Queenstown, S=Southampton")
 
-METRICS_PATH = os.path.join(os.path.dirname(__file__), "..", "model", "metrics.json")
-START_TIME   = datetime.utcnow().isoformat() + "Z"
+class PredictionOutput(BaseModel):
+    prediction:  int
+    probability: float
+    label:       str
+    input:       dict
 
-
-def _load_metrics() -> dict:
-    if os.path.exists(METRICS_PATH):
-        with open(METRICS_PATH) as f:
-            return json.load(f)
-    return {}
-
-
-# ── routes ─────────────────────────────────────────────────────────────────────
-
-@app.route("/", methods=["GET"])
+# ── Routes ────────────────────────────────────────────────────────────────────
+@app.get("/", summary="Health Check")
 def health_check():
-    """
-    Health check endpoint.
-
-    Returns
-    -------
-    200  {"status": "ok", "service": "titanic-ml-api", ...}
-    503  if model cannot be loaded
-    """
     try:
-        load_model()                          # verify model is loadable
-        model_ready = True
+        load_model()
+        return {"status": "ok", "model_ready": True, "service": "titanic-ml-api"}
     except FileNotFoundError:
-        model_ready = False
+        raise HTTPException(status_code=503, detail="Model not trained yet")
 
-    payload = {
-        "status":      "ok" if model_ready else "degraded",
-        "service":     "titanic-ml-api",
-        "version":     "1.0.0",
-        "model_ready": model_ready,
-        "uptime_since": START_TIME,
-    }
-    code = 200 if model_ready else 503
-    return jsonify(payload), code
-
-
-@app.route("/info", methods=["GET"])
+@app.get("/info", summary="Model Info")
 def model_info():
-    """
-    Return model metadata, feature schema, and latest evaluation metrics.
-    """
-    metrics = _load_metrics()
-    payload = {
-        "model":   "RandomForestClassifier (sklearn Pipeline)",
-        "target":  "Survived (0 = Did Not Survive, 1 = Survived)",
-        "features": {
-            "numeric":     NUMERIC_FEATURES,
-            "categorical": CATEGORICAL_FEATURES,
-            "all":         EXPECTED_FEATURES,
-        },
-        "valid_values": {
-            "Pclass":   [1, 2, 3],
-            "Sex":      ["male", "female"],
-            "Embarked": ["C", "Q", "S"],
-        },
-        "training_metrics": metrics,
-    }
-    return jsonify(payload), 200
-
-
-@app.route("/predict", methods=["POST"])
-def predict_endpoint():
-    """
-    Predict survival for a Titanic passenger.
-
-    Request body (JSON)
-    -------------------
-    {
-        "Pclass":   3,          // int   1 | 2 | 3
-        "Sex":      "male",     // str   "male" | "female"
-        "Age":      22.0,       // float (optional, null allowed)
-        "Fare":     7.25,       // float >= 0
-        "Embarked": "S"         // str   "C" | "Q" | "S" (optional, null allowed)
+    metrics_path = os.path.join(os.path.dirname(__file__), "..", "model", "metrics.json")
+    metrics = json.load(open(metrics_path)) if os.path.exists(metrics_path) else {}
+    return {
+        "model": "RandomForestClassifier",
+        "features": EXPECTED_FEATURES,
+        "valid_values": {"Pclass": [1,2,3], "Sex": ["male","female"], "Embarked": ["C","Q","S"]},
+        "training_metrics": metrics
     }
 
-    Response (200)
-    --------------
-    {
-        "prediction":  0,
-        "probability": 0.1234,
-        "label":       "Did Not Survive",
-        "input":       { ...echoed cleaned input... }
-    }
-
-    Error (400 / 422 / 500)
-    -----------------------
-    { "error": "<message>" }
-    """
-    # ── parse JSON ──
-    if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 415
-
-    data = request.get_json(silent=True)
-    if data is None:
-        return jsonify({"error": "Invalid JSON body"}), 400
-
-    logger.info("POST /predict  payload=%s", data)
-
-    # ── validate ──
+@app.post("/predict", response_model=PredictionOutput, summary="Predict Survival")
+def predict_endpoint(passenger: PassengerInput):
     try:
-        cleaned = validate_input(data)
-    except ValueError as exc:
-        logger.warning("Validation error: %s", exc)
-        return jsonify({"error": str(exc)}), 422
-
-    # ── predict ──
-    try:
-        result = predict(cleaned)
-    except FileNotFoundError as exc:
-        logger.error("Model not found: %s", exc)
-        return jsonify({"error": "Model not trained yet. Run train.py first."}), 503
-    except Exception as exc:
-        logger.exception("Prediction failed: %s", exc)
-        return jsonify({"error": "Internal prediction error. Check server logs."}), 500
-
-    response = {**result, "input": cleaned}
-    logger.info("Prediction: %s  (prob=%.4f)", result["label"], result["probability"])
-    return jsonify(response), 200
-
-
-# ── error handlers ─────────────────────────────────────────────────────────────
-
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({"error": "Endpoint not found. Available: GET /, GET /info, POST /predict"}), 404
-
-
-@app.errorhandler(405)
-def method_not_allowed(e):
-    return jsonify({"error": f"Method not allowed on this endpoint"}), 405
-
-
-# ── entry point ────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("DEBUG", "false").lower() == "true"
-    logger.info("Starting Titanic ML API on port %d  (debug=%s)", port, debug)
-    app.run(host="0.0.0.0", port=port, debug=debug)
+        result = predict(passenger.model_dump())
+        return {**result, "input": passenger.model_dump()}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="Model not trained yet. Run train.py first.")
