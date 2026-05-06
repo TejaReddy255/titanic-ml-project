@@ -43,7 +43,7 @@ MODEL_DIR  = os.path.join(os.path.dirname(__file__), "..", "model")
 MODEL_PATH = os.path.join(MODEL_DIR, "titanic_pipeline.pkl")
 METRICS_PATH = os.path.join(MODEL_DIR, "metrics.json")
 DATA_DIR= os.path.join(os.path.dirname(__file__), "..", "data")
-DATA_PATH=os.path.join(DATA_DIR,"titan.csv")
+DATA_PATH=os.path.join(DATA_DIR,"titanic.csv")
 
 TARGET = "Survived"
 RANDOM_STATE = 42
