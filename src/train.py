@@ -51,7 +51,7 @@ RANDOM_STATE = 42
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 def load_dataset() -> tuple[pd.DataFrame, pd.Series]:
-    df = pd.readcsv(DATA_PATH)
+    df = pd.read_csv(DATA_PATH)
     X = df[EXPECTED_FEATURES].copy()
     y = df[TARGET]
     return X, y
