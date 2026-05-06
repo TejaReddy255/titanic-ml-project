@@ -8,7 +8,7 @@
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
 FROM python:3.11-slim AS builder
 
-LABEL maintainer="you@example.com"
+LABEL maintainer="sivasaitejaannem@gmail.com"
 LABEL description="Titanic survival prediction REST API"
 
 WORKDIR /app
@@ -34,7 +34,7 @@ WORKDIR /app
 # Re-install only runtime dependencies (no test/dev packages)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir flask gunicorn scikit-learn pandas numpy joblib
+ && pip install --no-cache-dir fastapi uvicorn scikit-learn pandas numpy joblib
 
 # Copy application code + trained model from builder
 COPY --from=builder /app/src      ./src
@@ -49,7 +49,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # Non-root user for security
-RUN useradd -m appuser
+RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 5000
